@@ -128,7 +128,8 @@ def main(args):
     args.device = torch.device('cuda', args.gpu_id)
 
     fix_seed(args.global_seed)
-
+    
+    args.out = args.out + '/' + args.exp
     os.makedirs(args.out, exist_ok=True)
     args.writer = SummaryWriter(args.out)
 
@@ -501,7 +502,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
 
     args.writer.close()
 
-def test(args, test_loader, model, epoch, pseudo=False):
+def test(args, test_loader, model, epoch):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -509,7 +510,6 @@ def test(args, test_loader, model, epoch, pseudo=False):
     top5 = AverageMeter()
     end = time.time()
     ecemeter = AverageMeter()
-    prefix = 'Pseudo ' if pseudo else ''
 
     test_loader = tqdm(test_loader)
     ece_score = ECELoss()
@@ -546,14 +546,14 @@ def test(args, test_loader, model, epoch, pseudo=False):
             ))
         test_loader.close()
 
-    print("{}top-1 acc: {:.2f}".format(prefix,top1.avg))
-    print("{}top-5 acc: {:.2f}".format(prefix,top5.avg))
-    print("{}ECE: {:.4f}".format(prefix,ecemeter.avg))
+    print("top-1 acc: {:.2f}".format(top1.avg))
+    print("top-5 acc: {:.2f}".format(top5.avg))
+    print("ECE: {:.4f}".format(ecemeter.avg))
 
     return losses.avg, top1.avg, ecemeter.avg
 
 
-def test_bayes(args, test_loader, model, epoch, bayes_fc=None, pseudo=False):
+def test_bayes(args, test_loader, model, epoch):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -561,7 +561,6 @@ def test_bayes(args, test_loader, model, epoch, bayes_fc=None, pseudo=False):
     top5 = AverageMeter()
     end = time.time()
     ecemeter = AverageMeter()
-    prefix = 'Pseudo ' if pseudo else ''
 
     test_loader = tqdm(test_loader)
     ece_score = ECELoss()
@@ -574,10 +573,7 @@ def test_bayes(args, test_loader, model, epoch, bayes_fc=None, pseudo=False):
             targets = targets.to(args.device)
             with autocast():
                 reps = model.encoder(inputs)
-                if bayes_fc is None:
-                    mean_output, std_output = bayes_predict(args,model.fc, reps)
-                else:
-                    mean_output, std_output = bayes_predict(args,bayes_fc, reps)
+                mean_output, std_output = bayes_predict(args,model.fc, reps)
                 ece = ece_score(mean_output, targets)
 
                 outputs, kl = model(inputs)
@@ -603,9 +599,9 @@ def test_bayes(args, test_loader, model, epoch, bayes_fc=None, pseudo=False):
             ))
         test_loader.close()
 
-    print("{}top-1 acc:{:.2f}".format(prefix,top1.avg))
-    print("{}top-5 acc:{:.2f}".format(prefix,top5.avg))
-    print("{}ECE:{:.4f}".format(prefix,ecemeter.avg))
+    print("top-1 acc:{:.2f}".format(top1.avg))
+    print("top-5 acc:{:.2f}".format(top5.avg))
+    print("ECE:{:.4f}".format(ecemeter.avg))
 
     return losses.avg, top1.avg, ecemeter.avg
 
@@ -644,9 +640,10 @@ if __name__ == '__main__':
                         help='coefficient of unlabeled loss')
     parser.add_argument('--threshold', default=0.95, type=float,
                         help='pseudo label max probability threshold')
-    parser.add_argument('--out', default='result',
+    parser.add_argument('--out', default='results',
                         help='directory to output the result')
-
+    parser.add_argument('--exp', default='test',
+                            help='experiment ID')
     parser.add_argument('--seed', default=None, type=int,
                         help="random seed")
     parser.add_argument('--global_seed', default=0, type=int,
