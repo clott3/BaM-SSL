@@ -3,7 +3,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from modbayesian_torch.layers import LinearFlipout, LinearReparameterization
+from models.bayesian_layers import LinearFlipout, LinearReparameterization
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +93,6 @@ class WideResNet(nn.Module):
         # global average pooling and classifier
         self.bn1 = nn.BatchNorm2d(channels[3], momentum=0.001)
         self.relu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
-        # if not non_linear:
-        #     self.fc = nn.Linear(channels[3], num_classes)
-        # else:
-        #     list_layers = [nn.Linear(channels[3],channels[3]), nn.LeakyReLU(negative_slope=0.1, inplace=True)]
-        #     for _ in range(depth-2):
-        #         list_layers += [nn.Linear(channels[3],channels[3]), nn.LeakyReLU(negative_slope=0.1, inplace=True)]
-        #     list_layers += [nn.Linear(channels[3],num_classes)]
-        #     print("using MLP as Classifier with hidden dim={} and depth={}".format(channels[3],depth))
-        #     self.fc = nn.Sequential(*list_layers)
 
         self.channels = channels[3]
 
@@ -141,7 +132,7 @@ def build_wideresnet(depth, widen_factor, dropout, num_classes, in_channels):
 
 class SupCEWideResNet(nn.Module):
     """encoder + classifier"""
-    def __init__(self, in_channels=3,num_classes=10, depth=28, widen_factor=2, dropout=0.0, non_linear=False, clas_depth=2):
+    def __init__(self, in_channels=3,num_classes=10, depth=28, widen_factor=2, dropout=0.0):
         super(SupCEWideResNet, self).__init__()
         self.encoder = build_wideresnet(depth=depth,
                           widen_factor=widen_factor,
@@ -149,23 +140,14 @@ class SupCEWideResNet(nn.Module):
                           num_classes=num_classes,
                           in_channels=in_channels)
         self.dim_in = self.encoder.channels
-
-        if not non_linear:
-            self.fc = nn.Linear(self.dim_in, num_classes)
-        else:
-            print("using MLP as Classifier with hidden dim ", self.dim_in)
-            self.fc = nn.Sequential(
-                    nn.Linear(self.dim_in, self.dim_in),
-                    nn.ReLU(inplace=True),
-                    nn.Linear(self.dim_in, num_classes)
-                )
+        self.fc = nn.Linear(self.dim_in, num_classes)
 
     def forward(self, x):
         return self.fc(self.encoder(x))
 
 class BayesCEWideResNet(nn.Module):
     """encoder + classifier"""
-    def __init__(self, in_channels=3, num_classes=10, depth=28, widen_factor=2, dropout=0.0, non_linear=False, clas_depth=2, prior_mu=0, prior_sigma=1, flipout=False, reparam=False, save_buffer_sd=False):
+    def __init__(self, in_channels=3, num_classes=10, depth=28, widen_factor=2, dropout=0.0, prior_mu=0, prior_sigma=1):
         super(BayesCEWideResNet, self).__init__()
         self.encoder = build_wideresnet(depth=depth,
                           widen_factor=widen_factor,
@@ -173,28 +155,8 @@ class BayesCEWideResNet(nn.Module):
                           num_classes=num_classes,
                           in_channels=in_channels)
         self.dim_in = self.encoder.channels
-
-        if not non_linear:
-            if flipout:
-                print(f"Using Flipout Bayes linear classifier {self.dim_in}, {num_classes}")
-                self.fc = LinearFlipout(in_features=self.dim_in, out_features=num_classes,save_buffer_sd=save_buffer_sd,prior_mean=prior_mu,prior_variance=prior_sigma)
-            elif reparam:
-                print(f"Using Reparam Bayes linear classifier {self.dim_in}, {num_classes}")
-                self.fc = LinearReparameterization(in_features=self.dim_in, out_features=num_classes,save_buffer_sd=save_buffer_sd,prior_mean=prior_mu,prior_variance=prior_sigma)
-            else:
-                raise "reparam or flipout"
-                # print(f"Using BNN Bayes linear classifier {self.dim_in}, {num_classes}")
-                # self.fc = bnn.BayesLinear(prior_mu=prior_mu, prior_sigma=prior_sigma, in_features=self.dim_in, out_features=num_classes,save_buffer_sd=save_buffer_sd)
-        else:
-            if flipout:
-                raise
-            else:
-                print("using MLP as Bayes Classifier with hidden dim ", self.dim_in)
-                self.fc = nn.Sequential(
-                        bnn.BayesLinear(prior_mu=0, prior_sigma=1, in_features=self.dim_in, out_features=self.dim_in),
-                        nn.ReLU(inplace=True),
-                        bnn.BayesLinear(prior_mu=0, prior_sigma=1, in_features=self.dim_in, out_features=num_classes)
-                        )
+        print(f"Using Reparam Bayes linear classifier {self.dim_in}, {num_classes}")
+        self.fc = LinearReparameterization(in_features=self.dim_in, out_features=num_classes,prior_mean=prior_mu,prior_variance=prior_sigma)
 
     def forward(self, x):
         return self.fc(self.encoder(x))

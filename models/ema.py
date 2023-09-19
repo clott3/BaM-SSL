@@ -6,10 +6,8 @@ import torch
 class ModelEMA(object):
     def __init__(self, args, model, decay, device):
         self.ema = deepcopy(model)
-        if args.local_rank == -1:
-            self.ema.to(device)
-        else:
-            self.ema.cuda(device)
+        self.ema.to(device)
+
         self.ema.eval()
         self.decay = decay
         self.ema_has_module = hasattr(self.ema, 'module')
@@ -18,7 +16,6 @@ class ModelEMA(object):
         self.buffer_keys = [k for k, _ in self.ema.named_buffers()]
         for p in self.ema.parameters():
             p.requires_grad_(False)
-        self.eps_buffers = args.save_buffer_sd
 
     def update(self, model, decay=None):
         dec = self.decay if decay is None else decay
@@ -41,7 +38,5 @@ class ModelEMA(object):
                     j = 'module.' + k
                 else:
                     j = k
-
-                if not self.eps_buffers: # eps_buffers = True already saved in model state dict
-                    if not ("eps" in k or "prior" in k):
-                        esd[k].copy_(msd[j])
+                if not ("eps" in k or "prior" in k):
+                    esd[k].copy_(msd[j])
